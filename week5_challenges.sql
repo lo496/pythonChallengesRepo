@@ -1,4 +1,4 @@
-/*
+/* (Monday)
 Employees - id(int), first_name(varchar), last_name(varchar), salary(int), department_id(int)
  
 Departments - id(int), name(varchar)
@@ -134,3 +134,145 @@ INNER JOIN department d
 ON e.department_id = d.id
 GROUP BY d.id
 ORDER BY d.name ASC; 
+
+/* (Tuesday)
+SQL Interview practice:
+ 
+1. What SQL constraints do you know about?
+2. What types of joins do we have?
+3. Create a student table with: student id, email, first_name, last_name
+4. Alter the table to include their phone number (US 10-digit numbers only. With OR without parenthesis and dashes)
+5. Create a function that creates student records. 
+6. Clean student email data: remove all whitespace
+7. Consider the following table:
+    students (
+        id SERIAL PRIMARY KEY,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        enrollment_date DATE NOT NULL,
+        gpa NUMERIC(3,2),
+        credits_completed INTEGER NOT NULL DEFAULT 0,
+        disciplinary_flag BOOLEAN NOT NULL DEFAULT FALSE
+    );
+    a. Use a CASE statement to return academic_status:
+        If disciplinary_flag = TRUE -> 'Under Review'
+        if gpa is NULL -> 'No GPA'
+        if gpa >= 3.5 AND credits_completed >= 60 -> 'Senior in Good standing'
+        if gpa >= 2.0 -> 'Good Standing'
+        otherwise -> 'Probation'
+    b. Another separate CASE:
+        Return honors_eligibility to 'Yes' when:
+            gpa >= 3.7
+            credits_completed >= 30
+            disciplinary_flag = FALSE
+        Otherwise 'No' 
+*/
+
+-- 1 
+/*
+SQL constraints include:
+UNIQUE = no duplicates in table
+NOT NULL = has a value
+PRIMARY KEY = both of the previous two
+FOREIGN KEY = references another table's primary key
+CHECK = used for other constraints, such as a numeric value must be > 0
+*/
+
+-- 2
+/*
+There are 5 types of join:
+INNER JOIN = returns only rows that match in both tables
+LEFT JOIN = returns all rows from the left table, but only matching rows from the right, where empty values in unmatched rows from the left table are assigned NULL
+RIGHT JOIN = same as left join but with table order reversed
+OUTER JOIN = includes all rows from both tables, where empty values in unmatched rows from both sides are assigned NULL
+CROSS JOIN = returns every possible combination of rows from each table, as in a Cartesian product
+*/
+
+-- 3
+DROP TABLE IF EXISTS student CASCADE;
+
+CREATE TABLE student
+(
+    student_id INT NOT NULL PRIMARY KEY,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    first_name VARCHAR(20) NOT NULL,
+    last_name VARCHAR(20) NOT NULL
+);
+
+-- 4
+ALTER TABLE student
+ADD COLUMN phone_number VARCHAR(14);
+
+-- 5
+DROP FUNCTION IF EXISTS create_student_record(
+    email VARCHAR(100), first_name VARCHAR(20), last_name VARCHAR(20), phone_number VARCHAR(14));
+
+CREATE OR REPLACE FUNCTION create_student_record(
+    email VARCHAR(100), first_name VARCHAR(20), last_name VARCHAR(20), phone_number VARCHAR(14))
+RETURNS INT AS $$
+BEGIN
+    INSERT INTO student(student_id, email, first_name, last_name, phone_number) VALUES 
+    (
+        (CASE 
+            WHEN (SELECT MAX(student_id) FROM student) IS NULL THEN 1
+            ELSE (SELECT MAX(student_id) FROM student) + 1 
+        END), 
+        email,
+        first_name,
+        last_name,
+        phone_number
+    );
+    RETURN (SELECT MAX(student_id) FROM student);
+END;
+$$ LANGUAGE plpgsql;
+
+-- dummy data
+SELECT create_student_record('      someone@example.com   ', 'Alice', 'One', '(555)-123-4567');
+SELECT create_student_record('   somebody@example.com     ', 'Bob', 'Two', '(555)-890-4567');
+
+-- 6
+UPDATE student SET email = TRIM(email);
+
+-- 7
+DROP TABLE IF EXISTS students CASCADE;
+
+CREATE TABLE students 
+(
+    id SERIAL PRIMARY KEY,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    enrollment_date DATE NOT NULL,
+    gpa NUMERIC(3,2),
+    credits_completed INTEGER NOT NULL DEFAULT 0,
+    disciplinary_flag BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+-- dummy data
+INSERT INTO students (last_name, first_name, email, enrollment_date, gpa, credits_completed, disciplinary_flag) VALUES
+    ('One', 'Alice', 'ao@e.com', NOW(), 4.0, 90, FALSE),
+    ('Two', 'Bob', 'bt@e.com', NOW(), 3.8, 60, FALSE),
+    ('Three', 'Charlie', 'ct@e.com', NOW(), 3.5, 30, FALSE),
+    ('Four', 'Diane', 'df@e.com', NOW(), 2.5, 15, FALSE),
+    ('Five', 'Elise', 'ef@e.com', NOW(), 1.5, 3, TRUE),
+    ('Six', 'Frank', 'fs@e.com', NOW(), NULL, 0, FALSE);
+
+-- academic status
+SELECT id, first_name, last_name, 
+    CASE
+        WHEN disciplinary_flag THEN 'Under Review'
+        WHEN gpa IS NULL THEN 'No GPA'
+        WHEN gpa >= 3.5 AND credits_completed >= 60 THEN 'Senior in Good standing'
+        WHEN gpa >= 2.0 THEN 'Good Standing'
+    ELSE 'Probation'
+    END AS academic_status
+FROM students;
+
+-- honors eligibility
+SELECT id, first_name, last_name,
+    CASE
+        WHEN gpa >= 3.7 AND credits_completed >= 30 AND NOT disciplinary_flag THEN 'Yes' 
+    ELSE 'No'
+    END AS honors_eligibility
+FROM students;
